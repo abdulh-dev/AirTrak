@@ -1,0 +1,59 @@
+import serial
+import time
+import datetime
+import os
+import csv
+from supabase import create_client, Client
+
+supabaseURL = "Supabase_Url"
+supabaseKey = "Supabase_Prime_Token"
+
+supabase: Client = create_client(supabaseURL, supabaseKey)
+
+# Open Serial Connection
+ser = serial.Serial('/dev/ttyUSB0')
+
+# Define the log file path
+log_dir = "/home/zhuerta/Documents/PythonTest/TEST/"
+timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+log_file = os.path.join(log_dir, f"data_log_{timestamp}.csv")
+
+# Ensure CSV file has a header row when created
+if not os.path.exists(log_file):
+    with open(log_file, "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["Timestamp", "PM2.5 (µg/m³)", "PM10 (µg/m³)"])  # Column headers
+
+while True:
+    data = []
+    for index in range(10):  # Read 10 bytes from serial
+        datum = ser.read()
+        data.append(datum)
+
+    # Convert received bytes into integer values
+    pmtwofive = int.from_bytes(b''.join(data[2:4]), byteorder='little') / 10
+    pmten = int.from_bytes(b''.join(data[4:6]), byteorder='little') / 10
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Format timestamp
+
+    # Append data to CSV file
+    with open(log_file, "a", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow([timestamp, pmtwofive, pmten])
+    # Send to Supabase
+    try:
+        data = {
+            "timestamp": timestamp,
+            "pm2_5": pmtwofive,
+            "pm10": pmten,
+            "aqi": -1
+        }
+
+        response = supabase.table("airqualitydata").insert(data).execute()
+        print(f"Logged to Supabase: {data}")
+    except Exception as e:
+        print("Supabase insert failed:", e)
+            
+            
+    print(f"Logged: {timestamp}, PM2.5={pmtwofive} µg/m³, PM10={pmten} µg/m³")  # Debugging
+
+    time.sleep(5)  # Wait before next reading
