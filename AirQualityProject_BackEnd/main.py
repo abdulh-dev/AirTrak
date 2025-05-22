@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, UploadFile, File
+from fastapi import FastAPI, Query, UploadFile, File, HTTPException, Form
 from supabase import create_client, Client
 from datetime import datetime
 from typing import List
@@ -8,6 +8,13 @@ from io import StringIO
 import os
 from fastapi import WebSocket, WebSocketDisconnect
 import json
+from pymongo import MongoClient
+
+
+# MongoDB setup
+mongo_client = MongoClient(os.environ.get("MONGODB_URI"))
+mongo_db = mongo_client[os.environ.get("MONGO_DB_NAME")]
+users_collection = mongo_db["users"]
 
 
 
@@ -16,10 +23,26 @@ database_url = os.environ.get('DATABASE_URL')  # should be your Supabase URL
 database_key = os.environ.get('DATABASE_KEY')  # should be your Supabase anon or service key
 supabase: Client = create_client(database_url, database_key)
 
+
+
 # === PUBLIC AQI API KEY ===
 API_KEY = os.environ.get('PUBLIC_AQI_API_KEY')
-
+permissions_string = ""
 app = FastAPI()
+
+
+@app.post("/login")
+def login(username: str = Form(...), password: str = Form(...)):
+    user = users_collection.find_one({"username": username})
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    if user.get("password") != password:
+        permissions_string = user.get("permissions")
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    return {"message": f"Login successful for user: {username}"}
 
 
 # === PRIVATE DATASET FUNCTIONS ===
